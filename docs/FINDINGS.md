@@ -396,6 +396,37 @@ Windows build has the LogiLED integration built in and would call our shim direc
 It requires downloading the Windows depot (~2 GB) alongside the Linux one. **Not yet
 attempted — needs your decision.**
 
+### Would a Razer Chroma shim work instead? — CONFIRMED NO
+
+Asked because Chroma has broader game support than LightSync and a REST API that a
+fake local server could answer. It does not help either target game.
+
+**Warhammer 3 has no Chroma integration at all:**
+
+```
+Razer/Chroma DLLs in the install     -> none
+Razer|Chroma|RzChroma strings in Warhammer3.exe -> 0
+Razer|Chroma strings in libled.dll   -> 0
+```
+
+Its lighting is Logitech-only, so a Chroma shim would have nothing calling it.
+
+**Factorio's Linux binary has no Chroma implementation**, exactly as with Logitech.
+The only chroma-related literal in the whole binary is the settings key:
+
+```
+enable-razer-chroma-support                          -> 1  (config schema only)
+RzChroma, ChromaSDK, ChromaAnimation, chromasdk,
+  RzApi, razerapi, port 54235                        -> 0 each
+LogiLed, LogitechLed, LogiGkey                       -> 0 each
+```
+
+Both vendor SDKs are compiled out on Linux equally. Chroma is not a way around the
+mod requirement on the native build.
+
+A Chroma front end remains worthwhile later for *other* games in the library — it just
+does nothing for these two.
+
 ### Which API for health — CONFIRMED
 `LuaEntityPrototype.max_health` does **not** exist in 2.1 (it moved behind
 `get_max_health(quality)` for the quality system). Use `LuaEntity.get_health_ratio()`.
