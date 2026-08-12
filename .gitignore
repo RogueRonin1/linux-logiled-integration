@@ -1,0 +1,26 @@
+# Signing material — NEVER commit.
+# The leaf cert carries CN="Logitech Inc" so that Warhammer 3's libled.dll will
+# load the shim. That key is for your prefix and yours only; publishing it would
+# hand anyone a code-signing key impersonating Logitech.
+certs/
+*.key
+*.pem
+*.der
+*.pfx
+*.p12
+*.crt
+*.csr
+*.srl
+
+# Build output
+build/
+target/
+*.o
+*.exe
+*.dll
+*.a
+
+# Captures / scratch
+*.jsonl
+*.log
+scratch/

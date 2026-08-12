@@ -1,0 +1,9 @@
+{
+  "name": "g915-probe",
+  "version": "0.1.0",
+  "title": "G915 Probe",
+  "author": "rogueronin",
+  "factorio_version": "2.1",
+  "description": "Verifies script-output write capability and event latency for the G915 LED bridge.",
+  "dependencies": ["base"]
+}
