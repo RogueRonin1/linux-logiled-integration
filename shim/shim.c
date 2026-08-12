@@ -9,6 +9,7 @@
  */
 #include <windows.h>
 #include <stdio.h>
+#include <string.h>
 
 #define EXPORT __declspec(dllexport)
 
@@ -54,9 +55,20 @@ BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID reserved)
         QueryPerformanceFrequency(&g_freq);
         QueryPerformanceCounter(&g_start);
         n = GetEnvironmentVariableA("LOGILED_SHIM_LOG", path, MAX_PATH);
-        if (n > 0 && n < MAX_PATH) {
-            g_log = fopen(path, "a");
+        if (n == 0 || n >= MAX_PATH) {
+            /* Steam does not forward our environment to the game, so fall back
+             * to a file beside this DLL. */
+            n = GetModuleFileNameA(h, path, MAX_PATH);
+            if (n > 0 && n < MAX_PATH) {
+                char *slash = strrchr(path, '\\');
+                if (slash) slash[1] = '\0';
+                strncat(path, "logiled-shim-trace.jsonl", MAX_PATH - strlen(path) - 1);
+            } else {
+                path[0] = '\0';
+            }
         }
+        if (path[0])
+            g_log = fopen(path, "a");
         g_ready = 1;
         logf_("\"op\":\"DllMain\",\"reason\":\"attach\"");
     } else if (reason == DLL_PROCESS_DETACH) {

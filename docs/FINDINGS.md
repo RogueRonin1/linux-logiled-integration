@@ -241,6 +241,45 @@ Target device **6** = `LOGI_DEVICETYPE_PERKEY_RGB`, and the colour arrives as
 The whole chain works on Linux: registry -> WinVerifyTrust -> LoadLibrary ->
 GetProcAddress -> calls arrive in our code.
 
+### Bypassing the Steam launcher — PARTIALLY SOLVED, blocked on a UI dialog
+WH3 launches through CA's Electron launcher (`launcher/launcher.exe`), which needs a
+click. Two routes were tried:
+
+**Direct launch** — run `Warhammer3.exe` under Proton inside the sniper runtime,
+skipping the launcher entirely:
+
+```
+SteamAppId=1142710 STEAM_COMPAT_DATA_PATH=<compatdata/1142710> \
+  SteamLinuxRuntime_sniper/run -- "Proton - Experimental/proton" run Warhammer3.exe
+```
+
+This *starts* — Steam even registers it (`Game process added : AppID 1142710`) — but
+the process stalls: **one thread, 0.1% CPU, 0% GPU**, blocked in `ntsync_schedule`
+with a single ESTAB socket to the Steam client. It never renders. Bypassing the
+launcher is not sufficient on its own; something in the Steam/EOS handshake does not
+complete when the game is not started by Steam's own launch flow.
+
+Two prerequisites worth recording, both of which cost a run to discover:
+- `XAUTHORITY=/run/user/1000/xauth_OXuksh` must be set or Xwayland refuses the
+  connection (`Authorization required, but no authorization protocol specified`).
+- Killing `Warhammer3.exe` alone leaves the Proton/pressure-vessel chain alive, and
+  the stale session makes Steam refuse the next launch with `AppError_16`. The whole
+  tree must be cleaned up.
+
+**Via Steam** (`steam -applaunch 1142710`) — gets much further, then parks:
+
+```
+LaunchApp changed task to ProcessingShaderCache
+LaunchApp waiting for user response to ProcessingShaderCache
+```
+
+It sits there indefinitely waiting for a click on a Steam dialog. Not clearable
+without input automation (`ydotool`/uinput), which is not set up on this host.
+
+Useful detail found along the way: `launcher/bypass_time.txt` contains `30`, so the
+CA launcher does auto-continue after 30 s — the launcher itself is **not** the
+blocker. Steam's own pre-launch dialog is.
+
 ### Does the game drive it in actual gameplay? — **OPEN**
 The plumbing is proven, but that is not the same as WH3 exercising the lighting during
 a campaign or battle. `libled.dll` is CA's layer and the game imports it, so the code
@@ -295,6 +334,68 @@ is a first-write outlier, not steady state. Production will write one file, not 
 `on_tick` with an early `% N` return is affordable; the brief's concern about full-rate
 polling is satisfied by the decimation.
 
+### Achievements with the mod — CONFIRMED, and this is bad news for Route B
+
+**Enabling any mod moves you to Factorio's separate "modded" achievement track, and
+Steam achievements will not unlock.** Evidence from the shipped binary and locale:
+
+```
+modded-game = "The game is modded. Achievements are separate from the vanilla version of the game."
+delete-achievements-label-tooltip-modded = "This will permanently delete all modded achievements."
+```
+
+The game keeps **two** stores, and only the vanilla one is wired to Steam:
+
+```
+achievements.dat            <- vanilla
+achievements-modded.dat     <- modded, local only
+
+SteamContext::unlockAchievement
+SteamContext::isSteamAchievementGained
+unlockAchievementsThatAreOnSteamButArentActivatedLocally
+```
+
+This was determined by reading the binary and locale only — **no save, config or
+achievement data was opened, modified or created.** `~/.factorio` has no
+`achievements*.dat` yet, so nothing existed to disturb.
+
+Note this is *not* the same as the console-command/cheat/map-setting rules, which
+produce warnings like `command-will-disable-achievements`. Mods are handled by
+segregation rather than disabling — you still earn achievements, they just go into the
+modded set and never reach Steam.
+
+### Is there a mod-free route on Linux? — CONFIRMED NO
+Factorio's `config.ini` lists both:
+
+```
+; enable-razer-chroma-support=true
+; enable-logitech-led-support=true
+```
+
+which initially looked like a mod-free path — Chroma even has a REST API that a fake
+local server could answer. But the Linux binary contains **zero** implementation:
+
+- `LogiLed*` SDK symbols: **0 matches**
+- Chroma SDK symbols/endpoints: **0 matches** (only the settings key itself, plus
+  unrelated `isTextureMonochromatic` and SDL gamepad strings)
+
+Both settings keys are registered in the cross-platform settings schema but the
+implementations are compiled out on Linux. **The native Linux build has no built-in LED
+support of any kind**, so a mod is the only way to get state out of it — which means
+the achievement trade-off above is unavoidable on the native build.
+
+**Consequence — the Factorio track is a genuine either/or:**
+
+| | lighting | Steam achievements | performance |
+|---|---|---|---|
+| native + mod (Route B) | yes | **no** — modded track | native |
+| Windows build under Proton + shim (Route A) | yes, no mod needed | **yes** | Proton overhead |
+
+Route A becomes the achievement-preserving option and needs no mod at all, because the
+Windows build has the LogiLED integration built in and would call our shim directly.
+It requires downloading the Windows depot (~2 GB) alongside the Linux one. **Not yet
+attempted — needs your decision.**
+
 ### Which API for health — CONFIRMED
 `LuaEntityPrototype.max_health` does **not** exist in 2.1 (it moved behind
 `get_max_health(quality)` for the quality system). Use `LuaEntity.get_health_ratio()`.
@@ -304,11 +405,37 @@ The first probe crashed on exactly this; worth knowing before writing the real m
 
 ## Cleanup performed
 
-- Factorio `mod-list.json` restored to its original 5 entries; probe mod removed from
-  `~/.factorio/mods` and preserved in `factorio-mod/`; probe `script-output` cleared.
-- WH3's own Proton prefix was **never touched** — all Wine experiments ran in a
-  throwaway prefix.
-- Your desktop OpenRGB config is untouched; the restricted config is a separate file.
+Both games are back in their original state and playable.
+
+**Warhammer 3**
+- The prefix registry *was* modified for the launch attempt (the `ServerBinary` key).
+  It has been restored from a pre-change backup and verified:
+  `md5sum -c` -> `system.reg: OK`, and `grep -c A6519E67` -> `0`.
+- `user.reg` and `userdef.reg` restored from the same backup.
+- **Zero files** added to or modified in the game directory
+  (`find -newermt '-2 hours'` -> 0 files). The shim lives in this repo and was
+  referenced by a `Z:` path, so the install was never written to.
+- Steam integrity is intact — nothing to re-verify.
+- `tools/wh3-shim.sh {on|off|status}` now does this registry edit safely, with an
+  automatic backup and a refusal to run while the game is up. Current state:
+  `disabled (prefix is in its stock state)`.
+
+**Factorio**
+- `mod-list.json` restored to its original 5 entries (`base`, `elevated-rails`,
+  `quality`, `recycler`, `space-age`).
+- Probe mod removed from `~/.factorio/mods` and preserved in `factorio-mod/`.
+- `script-output/` removed — it did not exist before the probe created it.
+- **No save, config, player-data or achievement file was read or written.**
+
+**Left running deliberately:** the G915-only OpenRGB server, with the hold-test pattern
+applied, so the Direct-mode question can be answered by eye. Kill it with
+`pkill -x AppRun.wrapped` if it is in the way.
+
+## One dialog left on screen
+
+`steam -applaunch 1142710` is parked on a **"ProcessingShaderCache" dialog** waiting
+for a click. It is harmless — dismiss or cancel it when you're back. No game process
+is running.
 
 ## Toolchain installed
 

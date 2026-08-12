@@ -125,12 +125,29 @@ osslsigncode sign -certs certs/chain.pem -key certs/code.key \
   -in LogitechLedEnginesWrapper.dll -out LogitechLedEnginesWrapper-signed.dll
 ```
 
+## Factorio: achievements are an either/or
+
+Enabling **any** mod moves Factorio to its separate *modded* achievement track
+(`achievements-modded.dat`), and only the vanilla track is wired to Steam. So the mod
+route costs Steam achievements.
+
+There is no mod-free escape on the native build: `config.ini` advertises
+`enable-logitech-led-support` and `enable-razer-chroma-support`, but the Linux binary
+contains **zero** implementation symbols for either — both are compiled out.
+
+| | lighting | Steam achievements | performance |
+|---|---|---|---|
+| native + mod | yes | **no** | native |
+| Windows build under Proton + shim | yes, no mod | **yes** | Proton overhead |
+
 ## Open questions
 
 - **Does Direct mode hold?** Needs eyes on the keyboard — a test pattern is applied and
   waiting.
-- **Does WH3 drive lighting during real gameplay?** The plumbing is proven; whether the
-  game exercises it in a campaign or battle is not. One instrumented launch settles it.
+- **Does WH3 drive lighting during real gameplay?** The plumbing is proven; the game
+  exercising it in a campaign or battle is not. Unattended launch is blocked by a Steam
+  pre-launch dialog that needs a click — see `docs/FINDINGS.md`.
+- **Factorio route A or B** — achievements vs native performance.
 - Wired vs Lightspeed behaviour (HID++ feature indexes differ between the two).
 
 ## Scope note
